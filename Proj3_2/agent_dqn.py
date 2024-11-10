@@ -196,6 +196,7 @@ class Agent_DQN(Agent):
             steps = 0
 
             while not done:
+                loss = None
                 action = self.make_action(state, test=False)
                 next_state, reward, done, truncated, _ = self.env.step(action)
                 self.push(state, action, reward, next_state, done) # push to replay buffer
@@ -204,7 +205,8 @@ class Agent_DQN(Agent):
                 self.steps += 1 # global steps
                 steps += 1 # episode steps
 
-                loss = self.update()
+                if self.steps % 4 == 0:
+                    loss = self.update()
                 if loss is not None:
                     episode_loss += loss.item()
 

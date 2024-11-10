@@ -11,4 +11,4 @@
 #SBATCH --output=output.log     # Save standard output
 
 source activate myenv
-python main.py --train_dqn --filename dqn100k --num_episodes 100000
+python main.py --train_dqn --filename dqn150k --num_episodes 150000 --decay_rate 0.0000002
