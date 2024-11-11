@@ -254,7 +254,7 @@ class Agent_DQN(Agent):
                 if self.steps % 4 == 0: # update every 4 steps
                     loss = self.update()
                 if loss is not None:
-                    episode_loss += loss.item()
+                    episode_loss += loss
 
                 if self.steps > 10000 and self.epsilon > self.epsilon_min:
                     self.epsilon -= self.decay_rate
