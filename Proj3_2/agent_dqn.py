@@ -27,31 +27,6 @@ torch.manual_seed(595)
 np.random.seed(595)
 random.seed(595)
 
-# class Replay_Buffer():
-#     def __init__(self, capacity, position, state_shape, device):
-
-#         self.capacity = capacity
-#         self.position = position
-#         self.state_space = state_shape
-
-#         self.states = np.zeros((capacity, *state_shape), dtype=np.float32)
-#         self.actions = np.zeros(capacity, dtype=np.int64)
-#         self.rewards = np.zeros(capacity, dtype=np.float32)
-#         self.next_states = np.zeros((capacity, *state_shape), dtype=np.float32)
-#         self.dones = np.zeros(capacity, dtype=np.bool_)
-#         self.priorities = np.ones(capacity, dtype=np.float32)
-
-#         self.device = device
-
-    
-#     def push(self, state, action, reward, next_state, done):
-#         self.states[self.position] = state
-#         self.actions[self.position] = state
-#         self.rewards[self.position] = state
-#         self.next_states[self.position] = state
-#         self.dones[self.position] = state
-
-
 class Agent_DQN(Agent):
     def __init__(self, env, args):
         """
@@ -93,9 +68,9 @@ class Agent_DQN(Agent):
         if args.test_dqn:
             logger.info('Loading trained model')
             if args.filename:
-                self.dqn.load_model(args.filename)
+                self.load_model(args.filename)
             else:
-                self.dqn.load_model()
+                self.load_model()
 
         # Enable CUDNN Benchmarking for optimized convolution operations
         torch.backends.cudnn.benchmark = True
