@@ -27,6 +27,72 @@ torch.manual_seed(595)
 np.random.seed(595)
 random.seed(595)
 
+class Replay_Buffer():
+    def __init__(self, args, capacity, state_shape, device):
+        self.capacity = capacity
+        self.state_space = state_shape
+        self.position = 0
+        self.size = 0
+        self.max_priority = 1.0
+
+        self.alpha = args.alpha  # e.g., 0.6
+        self.beta = args.beta    # e.g., 0.4
+        self.beta_increment = args.beta_increment  # e.g., 0.001
+
+        self.states = np.zeros((capacity, *state_shape), dtype=np.float32)
+        self.actions = np.zeros(capacity, dtype=np.int64)
+        self.rewards = np.zeros(capacity, dtype=np.float32)
+        self.next_states = np.zeros((capacity, *state_shape), dtype=np.float32)
+        self.dones = np.zeros(capacity, dtype=np.int64)
+        self.priorities = np.ones(capacity, dtype=np.float32)
+
+        self.device = device
+
+    def push(self, state, action, reward, next_state, done):
+        self.states[self.position] = state
+        self.actions[self.position] = action
+        self.rewards[self.position] = reward
+        self.next_states[self.position] = next_state
+        self.dones[self.position] = done
+        # Set the priority of the new experience to the maximum priority observed so far
+        self.priorities[self.position] = self.max_priority ** self.alpha
+
+        self.position = (self.position + 1) % self.capacity
+        self.size = min(self.size + 1, self.capacity)
+    
+    def sample(self, batch_size):
+        if self.size == 0:
+            return None 
+        
+        scaled_probs = self.priorities[:self.size]
+        sample_probs = scaled_probs / scaled_probs.sum()
+        sample_indices = np.random.choice(self.size, batch_size, p=sample_probs)
+
+        states = torch.from_numpy(self.states[sample_indices]).permute(0,3,1,2).to(self.device, non_blocking=True)
+        actions = torch.from_numpy(self.actions[sample_indices]).to(self.device, non_blocking=True)
+        rewards = torch.from_numpy(self.rewards[sample_indices]).to(self.device, non_blocking=True)
+        next_states = torch.from_numpy(self.next_states[sample_indices]).permute(0,3,1,2).to(self.device, non_blocking=True)
+        dones = torch.from_numpy(self.dones[sample_indices]).to(self.device, non_blocking=True)
+
+        importance = (1 / self.size) * (1 / sample_probs[sample_indices])
+        importance = importance ** self.beta
+        importance_norm = importance / importance.max()
+
+        # Convert importance to tensor
+        importance_tensor = torch.from_numpy(importance_norm).float().to(self.device, non_blocking=True)
+
+        # Anneal beta after sampling
+        self.beta = min(1.0, self.beta + self.beta_increment)
+
+        return (states, actions, rewards, next_states, dones), importance_tensor, sample_indices
+    
+    def update_priorities(self, indices, td_errors):
+        epsilon = 1e-5
+        adjusted_errors = np.abs(td_errors) + epsilon
+        new_priorities = adjusted_errors ** self.alpha
+        self.priorities[indices] = new_priorities
+        self.max_priority = max(self.max_priority, new_priorities.max())
+
 class Agent_DQN(Agent):
     def __init__(self, env, args):
         """
@@ -46,10 +112,13 @@ class Agent_DQN(Agent):
 
         self.dqn = DQN().to(self.device)
         self.target = DQN().to(self.device)
-        self.loss = torch.nn.HuberLoss()
+        self.loss = torch.nn.HuberLoss(reduction='none')
         self.optimizer = torch.optim.AdamW(self.dqn.parameters(), lr=args.learning_rate)
 
-        self.buffer = deque(maxlen=self.args.buffer_len)
+        # Replay Buffer
+        state_shape = (84, 84, 4)
+        self.replay_buffer = Replay_Buffer(args=args, capacity=1000000, state_shape=state_shape, device=self.device)
+
         self.steps = 0
         
         # args
@@ -74,7 +143,10 @@ class Agent_DQN(Agent):
 
         # Enable CUDNN Benchmarking for optimized convolution operations
         torch.backends.cudnn.benchmark = True
-            
+        
+        # AMP Scaler with updated constructor
+        self.scaler = amp.GradScaler(device=self.device) 
+
     def init_game_setting(self):
         """
         Testing function will call this function at the begining of new game
@@ -119,43 +191,42 @@ class Agent_DQN(Agent):
         -----
             you can consider deque(maxlen = 10000) list
         """
-        self.buffer.append((state, action, reward, next_state, done)) 
+        self.replay_buffer.push(state, action, reward, next_state, done)
            
-    def replay_buffer(self):
-        """ You can add additional arguments as you need.
-        Select batch from buffer.
-        """
-        batch = random.sample(self.buffer, k=self.batch_size)
-        return batch 
-
     def update(self):
-        if len(self.buffer) < self.training_start: # start training after filling buffer
+        if self.steps < self.training_start:
             return 
-        experiences = self.replay_buffer()
-        states, actions, rewards, next_states, dones = zip(*experiences)
-        # print("Next states: ", next_states)
-        # print("Next states shape: ", np.array(next_states).shape)
-
-        states = torch.tensor(np.array(states), dtype=torch.float32).permute(0,3,1,2).to(self.device, non_blocking=True)
-        # print("States: ", states)
-        # print("States shape: ", states.shape)
-        actions = torch.tensor(np.array(actions), dtype=torch.int64).to(self.device, non_blocking=True)
-        rewards = torch.tensor(np.array(rewards), dtype=torch.float32).to(self.device, non_blocking=True)
-        next_states = torch.tensor(np.array(next_states), dtype=torch.float32).permute(0,3,1,2).to(self.device, non_blocking=True)
-        dones = torch.tensor(np.array(dones), dtype=torch.int64).to(self.device, non_blocking=True)
+        
+        (states, actions, rewards, next_states, dones), importance, sample_indices = self.replay_buffer.sample(self.batch_size)
+        if states is None:
+            return
 
         qs = self.dqn(states).gather(1, actions.unsqueeze(1)).squeeze(1)
         next_qs = self.target(next_states).max(dim=1)[0]
-        targets = rewards + (1 - dones) * self.gamma * next_qs
+        targets = rewards + (1 - dones) * self.gamma * next_qs.detach()
 
-        loss = self.loss(qs, targets.detach())
+        td_errors = qs - targets
 
-        # Backpropagation
+        # Compute per-sample losses
+        losses = self.loss(qs, targets.detach())
+
+        # Apply importance sampling weights
+        weighted_losses = importance * losses
+
+        # Compute mean loss
+        weighted_loss = weighted_losses.mean()
+
+        # Update priorities in the replay buffer
+        self.replay_buffer.update_priorities(sample_indices, td_errors.detach().cpu().numpy())
+
+        # Backpropagation with AMP
         self.optimizer.zero_grad()
-        loss.backward()
-        self.optimizer.step()
+        self.scaler.scale(weighted_loss).backward()
+        torch.nn.utils.clip_grad_value_(self.dqn.parameters(), clip_value=1.0)
+        self.scaler.step(self.optimizer)
+        self.scaler.update()
 
-        return loss
+        return weighted_loss.item()
     
     def train(self):
         """
@@ -169,9 +240,9 @@ class Agent_DQN(Agent):
             total_reward = 0
             episode_loss = 0
             steps = 0
+            loss = None
 
             while not done:
-                loss = None
                 action = self.make_action(state, test=False)
                 next_state, reward, done, truncated, _ = self.env.step(action)
                 self.push(state, action, reward, next_state, done) # push to replay buffer
@@ -180,7 +251,7 @@ class Agent_DQN(Agent):
                 self.steps += 1 # global steps
                 steps += 1 # episode steps
 
-                if self.steps % 4 == 0:
+                if self.steps % 4 == 0: # update every 4 steps
                     loss = self.update()
                 if loss is not None:
                     episode_loss += loss.item()
@@ -229,4 +300,3 @@ class Agent_DQN(Agent):
             print(f"Successfully loaded weights file models/{weights_filename}.pt.")
         except:
             print(f"No weights file available at models/{weights_filename}.pt")
-
