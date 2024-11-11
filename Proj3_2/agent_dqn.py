@@ -82,10 +82,13 @@ class Replay_Buffer():
         importance_tensor = torch.from_numpy(importance_norm).float().to(self.device, non_blocking=True)
 
         # Anneal beta after sampling
-        self.beta = min(1.0, self.beta + self.beta_increment)
+        self.anneal_beta()
 
         return (states, actions, rewards, next_states, dones), importance_tensor, sample_indices
     
+    def anneal_beta(self):
+        self.beta = min(1.0, self.beta + self.beta_increment)
+
     def update_priorities(self, indices, td_errors):
         epsilon = 1e-5
         adjusted_errors = np.abs(td_errors) + epsilon
@@ -284,7 +287,6 @@ class Agent_DQN(Agent):
                 logger.info(f"Episode {episode+1}: Episode Reward = {total_reward}")
                 logger.info(f"Episode {episode+1}: Avg Reward Last 100 = {avg_reward}")
                 logger.info(f"Episode {episode+1}: Epsilon = {self.epsilon}")
-                logger.info(f"Episode {episode+1}: Alpha = {self.replay_buffer.alpha}")
                 logger.info(f"Episode {episode+1}: Beta = {self.replay_buffer.beta}")
                 logger.info(f"Episode {episode+1}: Steps this episode = {steps}")
 
