@@ -281,8 +281,11 @@ class Agent_DQN(Agent):
 
                 logger.info(f"Episode {episode+1}: Loss = {episode_loss}")
                 avg_reward = sum(self.rewards[-100:]) / 100 if len(self.rewards) >= 100 else sum(self.rewards) / len(self.rewards)
+                logger.info(f"Episode {episode+1}: Episode Reward = {total_reward}")
                 logger.info(f"Episode {episode+1}: Avg Reward Last 100 = {avg_reward}")
                 logger.info(f"Episode {episode+1}: Epsilon = {self.epsilon}")
+                logger.info(f"Episode {episode+1}: Alpha = {self.alpha}")
+                logger.info(f"Episode {episode+1}: Beta = {self.beta}")
                 logger.info(f"Episode {episode+1}: Steps this episode = {steps}")
 
                 self.save_model(self.args.filename)
