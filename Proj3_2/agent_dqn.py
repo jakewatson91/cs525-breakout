@@ -36,6 +36,10 @@ class Replay_Buffer():
         self.position = 0
         self.size = 0
         self.max_priority = 1.0
+        
+        self.alpha = args.alpha  
+        self.beta = args.beta    
+        self.beta_increment = args.beta_increment  
         self.capacity = args.buffer_len
 
         self.states = np.zeros((self.capacity, *state_shape), dtype=np.float32)
