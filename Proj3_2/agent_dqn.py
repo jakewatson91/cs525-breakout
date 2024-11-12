@@ -19,6 +19,9 @@ from plot import Plot
 import logging
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
+
+import warnings
+warnings.filterwarnings("ignore")
 """
 you can import any package and define any extra function as you need
 """
