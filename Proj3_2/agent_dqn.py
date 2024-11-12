@@ -28,24 +28,19 @@ np.random.seed(595)
 random.seed(595)
 
 class Replay_Buffer():
-    def __init__(self, args, capacity, state_shape, device):
-        self.capacity = capacity
+    def __init__(self, args, state_shape, device):
         self.state_space = state_shape
         self.position = 0
         self.size = 0
         self.max_priority = 1.0
+        self.capacity = args.buffer_len
 
-        self.alpha = args.alpha  # e.g., 0.6
-        self.beta = args.beta    # e.g., 0.4
-        self.beta_increment = args.beta_increment  # e.g., 0.001
-
-        self.states = np.zeros((capacity, *state_shape), dtype=np.float32)
-        self.actions = np.zeros(capacity, dtype=np.int64)
-        self.rewards = np.zeros(capacity, dtype=np.float32)
-        self.next_states = np.zeros((capacity, *state_shape), dtype=np.float32)
-        self.dones = np.zeros(capacity, dtype=np.int64)
-        self.priorities = np.ones(capacity, dtype=np.float32)
-
+        self.states = np.zeros((self.capacity, *state_shape), dtype=np.float32)
+        self.actions = np.zeros(self.capacity, dtype=np.int64)
+        self.rewards = np.zeros(self.capacity, dtype=np.float32)
+        self.next_states = np.zeros((self.capacity, *state_shape), dtype=np.float32)
+        self.dones = np.zeros(self.capacity, dtype=np.int64)
+        self.priorities = np.ones(self.capacity, dtype=np.float32)
         self.device = device
 
     def push(self, state, action, reward, next_state, done):
@@ -120,7 +115,7 @@ class Agent_DQN(Agent):
 
         # Replay Buffer
         state_shape = (84, 84, 4)
-        self.replay_buffer = Replay_Buffer(args=args, capacity=1000000, state_shape=state_shape, device=self.device)
+        self.replay_buffer = Replay_Buffer(args=args, state_shape=state_shape, device=self.device)
 
         self.steps = 0
         
