@@ -3,24 +3,25 @@
 import random
 import numpy as np
 from collections import deque
-from tqdm import tqdm
-# from accelerate import Accelerator
 import os
 import sys
+from tqdm import tqdm
 
 import torch
 import torch.nn.functional as F
 import torch.optim as optim
-import torch.nn as nn
-from torch.cuda.amp import autocast, GradScaler
-
+from torch import amp  # Updated import for AMP
 
 from agent import Agent
 from dqn_model import DQN
-from environment import Environment
-from argument import add_arguments
 from plot import Plot
 
+import logging
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
+
+import warnings
+warnings.filterwarnings("ignore")
 """
 you can import any package and define any extra function as you need
 """
@@ -28,7 +29,6 @@ you can import any package and define any extra function as you need
 torch.manual_seed(595)
 np.random.seed(595)
 random.seed(595)
-
 
 class Agent_DQN(Agent):
     def __init__(self, env, args):
@@ -41,53 +41,52 @@ class Agent_DQN(Agent):
             parameters for q-learning; decaying epsilon-greedy
             ...
         """
+
         super(Agent_DQN,self).__init__(env)
 
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        self.args = args
 
-        print(torch.cuda.device_count())
-        print(torch.cuda.get_device_name(0))
+        self.dqn = DQN().to(self.device)
+        self.target = DQN().to(self.device)
+        self.loss = torch.nn.HuberLoss()
+        self.optimizer = torch.optim.AdamW(self.dqn.parameters(), lr=args.learning_rate)
+
+        self.buffer = deque(maxlen=self.args.buffer_len)
+        self.steps = 0
         
-        # hyperparameters
-        self.batch_size = 32
-        self.gamma = 0.99
-        self.epsilon = 1.0
-        self.epsilon_min = 0.025
-        self.epsilon_decay = 0.99
-        self.update_freq = 5000
-        self.D = deque(maxlen=10000)
-        self.frame_stack = deque(maxlen=4) # is this needed
-        self.frame_stack.clear()
+        # args
+        self.num_episodes = args.num_episodes
+        self.epsilon = args.epsilon
+        self.epsilon_min = args.epsilon_min
+        self.gamma = args.gamma
+        self.training_start = args.training_start
+        self.update_freq = args.update_freq
+        self.decay_rate = args.decay_rate
+        self.batch_size = args.batch_size
 
-        self.dqn = DQN()
-        self.dqn.to(self.device)  # Move the model to the device
+        self.rewards = []
+        self.losses = []
 
-        self.target = DQN() # initializing Q values for main and target network
-        self.target.to(self.device)
-
-        self.optimizer = optim.Adam(self.dqn.parameters(), lr=args.learning_rate) # setting learning rate to learning rate in args
-
-        # self.dqn, self.target, self.optimizer = accelerator.prepare(self.dqn, self.target, self.optimizer)
-        
-        self.state = self.init_game_setting    
-            
         if args.test_dqn:
-            #you can load your model here
-            print('loading trained model')
-            self.dqn.load_model()
-            
+            logger.info('Loading trained model')
+            if args.filename:
+                self.load_model(args.filename)
+            else:
+                self.load_model()
 
+        # Enable CUDNN Benchmarking for optimized convolution operations
+        torch.backends.cudnn.benchmark = True
+            
     def init_game_setting(self):
         """
         Testing function will call this function at the begining of new game
         Put anything you want to initialize if necessary.
         If no parameters need to be initialized, you can leave it as blank.
         """
-        return self.env.reset()
-        # pass
-    
-    
-    def make_action(self, observation, num_actions=4, test=True): # test=True for epsilon greedy
+        pass
+     
+    def make_action(self, observation, num_actions=4, test=True):
         """
         Return predicted action of your agent
         Input:
@@ -97,19 +96,22 @@ class Agent_DQN(Agent):
             action: int
                 the predicted action from trained model
         """
-        # print("State shape before DQN:", observation.shape)  # Should be [batch_size, channels, height, width]
-
-        obs_tensor = torch.tensor(observation, dtype=torch.float32).unsqueeze(0).to(self.device)
+        obs_tensor = torch.tensor(observation, dtype=torch.float32).unsqueeze(0).permute(0, 3, 1, 2).to(self.device, non_blocking=True)
+        # print("Obs tensor: ", obs_tensor)
         
-        q_vals = self.dqn(obs_tensor)
-        # print("Q vals: ", q_vals)
-
-        if test and random.random() < self.epsilon: # explore
-            action = random.randint(0, num_actions-1)
-            # print("Random action: ", action)
+        with amp.autocast(device_type=self.device.type):
+            q_vals = self.dqn(obs_tensor)
+            # print("q_vals: ", q_vals)
+        
+        # print("epsilon: ", self.epsilon)
+        if not test and random.random() < self.epsilon:
+            # print("Action space: ", self.env.action_space.n)
+            action = self.env.action_space.sample()
+            # print("Random action from make_action: ", action)
         else:
             action = torch.argmax(q_vals, dim=1).item()
-            # print("Greedy action: ", action)
+            # print("Max action from make_action: ", action)
+
         return action
     
     def push(self, state, action, reward, next_state, done):
@@ -120,109 +122,113 @@ class Agent_DQN(Agent):
         -----
             you can consider deque(maxlen = 10000) list
         """
-        
-        self.D.append((state, action, reward, next_state, done))        
-        
+        self.buffer.append((state, action, reward, next_state, done)) 
+           
     def replay_buffer(self):
         """ You can add additional arguments as you need.
         Select batch from buffer.
         """
+        batch = random.sample(self.buffer, k=self.batch_size)
+        return batch 
 
-        return random.sample(self.D, self.batch_size) 
-        
+    def update(self):
+        if len(self.buffer) < self.training_start: # start training after filling buffer
+            return 
+        experiences = self.replay_buffer()
+        states, actions, rewards, next_states, dones = zip(*experiences)
+        # print("Next states: ", next_states)
+        # print("Next states shape: ", np.array(next_states).shape)
 
-    def train(self, n_episodes=100000):
+        states = torch.tensor(np.array(states), dtype=torch.float32).permute(0,3,1,2).to(self.device, non_blocking=True)
+        # print("States: ", states)
+        # print("States shape: ", states.shape)
+        actions = torch.tensor(np.array(actions), dtype=torch.int64).to(self.device, non_blocking=True)
+        rewards = torch.tensor(np.array(rewards), dtype=torch.float32).to(self.device, non_blocking=True)
+        next_states = torch.tensor(np.array(next_states), dtype=torch.float32).permute(0,3,1,2).to(self.device, non_blocking=True)
+        dones = torch.tensor(np.array(dones), dtype=torch.int64).to(self.device, non_blocking=True)
+
+        qs = self.dqn(states).gather(1, actions.unsqueeze(1)).squeeze(1)
+        next_qs = self.target(next_states).max(dim=1)[0]
+        targets = rewards + (1 - dones) * self.gamma * next_qs
+
+        loss = self.loss(qs, targets.detach()).mean()
+
+        # Backpropagation
+        self.optimizer.zero_grad()
+        loss.backward()
+        self.optimizer.step()
+
+        return loss
+    
+    def train(self):
         """
         Implement your training algorithm here
         """
-        rewards = []
-        avg_rewards = []
-        for episode in tqdm(range(n_episodes), desc='Training'):
+        for episode in tqdm(range(self.args.num_episodes)):
             state = self.env.reset()
+            # print("initial state shape: ", state.shape)
             done = False
-            episode_reward = 0
+
+            total_reward = 0
+            episode_loss = 0
+            steps = 0
 
             while not done:
-                action = self.make_action(state)
+                loss = None
+                action = self.make_action(state, test=False)
                 next_state, reward, done, truncated, _ = self.env.step(action)
-                episode_reward += reward
+                self.push(state, action, reward, next_state, done) # push to replay buffer
 
-                self.push(state, action, reward, next_state, done)
+                total_reward += reward 
+                self.steps += 1 # global steps
+                steps += 1 # episode steps
 
-            if len(self.D) >= self.batch_size:  # Train only if there's enough data for a batch
-                self.update()
+                if self.steps % 4 == 0:
+                    loss = self.update()
+                if loss is not None:
+                    episode_loss += loss.item()
 
-            # print(f"Episode {episode + 1}/{n_episodes} finished with reward: {episode_reward}")
-            # Add current episode's reward to list of rewards
-            rewards.append(episode_reward)
+                if self.steps > 10000 and self.epsilon > self.epsilon_min:
+                    self.epsilon -= self.decay_rate
+                    # if self.steps % 10 == 0:
+                    #     print("Epsilon: ", self.epsilon)
+                
+                if self.steps % 5000 == 0:
+                    self.target.load_state_dict(self.dqn.state_dict())
 
-            # Calculate average reward over last 100 episodes
+                state = next_state
             
-            if len(rewards) >= 100:
-                avg_reward = sum(rewards[-100:]) / 100
-                avg_rewards.append(avg_reward)
-                # print(f"Average reward over last 100 episodes: {avg_reward}")
-            else:
-                avg_rewards.append(0)
-        
-            if episode % 1000 == 0:
-                while self.epsilon >= 0.1:
-                    self.epsilon = self.epsilon * 0.9
-        # self.eps_start = 1.0
-        # self.eps_final = 0.01
-        # self.eps_decay = 2000000
-        # self.eps = 1.0
-
-        # if self.global_step > 100000:
-        #     self.eps -= (self.eps_start - self.eps_final) / self.eps_decay
-        #     self.eps = max(self.eps, self.eps_final)
-            # Move to the next state
-            state = next_state
+            self.rewards.append(total_reward)
+            self.losses.append(episode_loss)
             
-        plot = Plot(avg_rewards) # plot training
-        plot.plot()
+            # plotting, logging, saving
+            if episode and episode % self.args.write_freq == 0:
+                # rewards plot
+                plot = Plot(self.rewards)
+                plot.plot("Rewards", "Rewards", "training_rewards", self.args.filename)
 
-        print("Training complete. Saving model...")
-        self.dqn.save_model('models/latest.pt')
-        # if args.test_dqn:
-            #you can load your model here
-            # print('loading trained model')
-            ###########################
-            # YOUR IMPLEMENTATION HERE #
-            ###########################
-            # self.q_net.load_state_dict(torch.load('./dqn_breakout.pth'))
-    def update(self):  
-        batch = self.replay_buffer()
-        states, actions, rewards, next_states, dones = zip(*batch)
-        
-        state_tensor = torch.tensor(np.array(states), dtype=torch.float32).to(self.device) # combining into np.arrays for speed
-        # print("State tensor shape: ", state_tensor.shape)
-        action_tensor = torch.tensor(np.array(actions), dtype=torch.int64).to(self.device)
-        reward_tensor = torch.tensor(np.array(rewards), dtype=torch.float32).to(self.device)
-        next_state_tensor = torch.tensor(np.array(next_states), dtype=torch.float32).to(self.device)
-        # print("next state tensor shape: ", next_state_tensor.shape)
-        done_tensor = torch.tensor(np.array(dones), dtype=torch.bool).to(self.device)
+                # loss plot
+                plot = Plot(self.losses[10:])
+                plot.plot("Loss", "Loss", "training_loss", self.args.filename)
 
-        q = self.dqn(state_tensor)
-        # print("q: ", q)
+                logger.info(f"Episode {episode+1}: Loss = {episode_loss}")
+                avg_reward = sum(self.rewards[-100:]) / 100 if len(self.rewards) >= 100 else sum(self.rewards) / len(self.rewards)
+                logger.info(f"Episode {episode+1}: Avg Reward Last 100 = {avg_reward}")
+                logger.info(f"Episode {episode+1}: Epsilon = {self.epsilon}")
+                logger.info(f"Episode {episode+1}: Steps this episode = {steps}")
 
-        q_for_actions = torch.gather(q, 1, action_tensor.unsqueeze(1)).squeeze(1)
-        # print("q for actions: ", q_for_actions)
+                self.save_model(self.args.filename)
+    
+    def save_model(self, weights_filename):
+        try:
+            torch.save(self.dqn.state_dict(), f"models/{weights_filename}.pt")
+            print(f"Model saved at models/{weights_filename}.pt")
+        except:
+            print(f"Model {weights_filename} could not be saved")
 
-        with torch.no_grad():  # Don't compute gradients for the target Q-values
-            next_state_values = self.target(next_state_tensor)  # Shape: (batch_size, num_actions)
-            # print("next state q values: ", next_state_values)
-            max_next_q_values, _ = torch.max(next_state_values, dim=1)
-            # print("max next q values: ", max_next_q_values)
-        target_q_values = reward_tensor + (1 - done_tensor.float()) * self.gamma * max_next_q_values
-        # print("target q values: ", target_q_values)
-        # Step 6: Calculate the loss
-        loss_fn = torch.nn.HuberLoss()
-        loss = loss_fn(q_for_actions, target_q_values)
-
-        # Step 7: Backpropagation
-        self.optimizer.zero_grad()  # Zero the gradients
-        loss.backward()             # Compute the gradients
-        self.optimizer.step()        # Update the parameters
-
-        return loss.item()  # You can return the loss for monitoring
+    def load_model(self, weights_filename):
+        try:
+            self.dqn.load_state_dict(torch.load(f"models/{weights_filename}.pt"))
+            print(f"Successfully loaded weights file models/{weights_filename}.pt.")
+        except:
+            print(f"No weights file available at models/{weights_filename}.pt")

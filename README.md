@@ -10,7 +10,8 @@ You can optionally update argument.py to add your own arguments (if needed).
 * Week 7, Tuesday Oct 8, 2024 (23:59)
 
 #### Due Date
-* Week 10, Tuesday Oct 29, 2024 (23:59))
+* Updated to Week 12, Tuesday Nov 12, 2024 (23:59))
+* (It was Week 10, Tuesday Oct 29, 2024 (23:59)))
 
 #### Total Points
 * 100 (One Hundred)
@@ -26,9 +27,12 @@ In this project, we will provide a leaderboard and give **10** bonus points to t
   
   | Top | Date | Name | Score | Model |
   | :---: | :---:| :---: | :---: | :---: |
-  | 1  | ... | ... | ... | ... |
-  | 2  | ... | ... | ... | ... |
-  | 3  | ... | ... | ... | ... |
+  | 1  | 11/03/2024 | Zhiyang Zhang | 493.09 | ... |
+  | 2  | 11/02/2024 | Badrivishal Ajeet Paurana | 382.96 | ... |
+  | 3  | 10/26/2024 | Ningcong Chen | 334.48 | ... |
+  | 4  | 11/03/2024 | Sumukh Porwa | 309.54 | ... |
+  | 5  | 10/31/2024 | Badrivishal Ajeet Paurana | 283.62 | ... |
+  | 6  | 11/08/2024 | Srikanth Natarajan | 281.62 | ... |
 
 
 * How to elvaluate
@@ -41,9 +45,9 @@ In this project, we will provide a leaderboard and give **10** bonus points to t
 * Install [Miniconda](https://www.python.org/downloads/)
 * Create virtual environment and install Python 3: conda create -n myenv python=3.11.4. This will help you create a new conda environment named myenv. Gymnasium library supports for Python 3.8, 3.9, 3.10, 3.11 on Linux and macOS.
 * Activate your virtual environment: `conda activate myenv`
-* Install gymnasium: `pip install opencv-python-headless gymnasium[atari] autorom[accept-rom-license]` (See [install gymnasium](https://github.com/Farama-Foundation/Gymnasium))
 * install pytorch: See [install pytorch](https://pytorch.org/get-started/locally/), pip install torch torchvision torchaudio
 * For the  Atari wrapper, install the following two items: `pip install -U "ray[rllib]" ipywidgets`
+* Install gymnasium: `pip install opencv-python-headless gymnasium[atari] autorom[accept-rom-license]` (See [install gymnasium](https://github.com/Farama-Foundation/Gymnasium))
 * For successfully running code, you may also need to install the following item: `pip install --upgrade scipy numpy`.
 * For video recording in testing, install the following three items: `pip install moviepy`, `pip install ffmpeg`.
 * When testing, for nice output on the terminal, you need to install tqdm: `pip install tqdm`
@@ -109,7 +113,7 @@ Please compress all the below files into a zipped file and submit the zip file (
 * [DQN Tutorial on Medium](https://medium.com/@jonathan_hui/rl-dqn-deep-q-network-e207751f7ae4)
 
 ## Tips for Using Turing GPUs or Google Cloud
-* [How to use GPUs on WPI Turing](https://github.com/UrbanIntelligence/WPI-DS551-Fall24/blob/main/Project3/materials/Turing_Setup_Instructions.pdf)
+* [How to use GPUs on WPI Turing](https://github.com/UrbanIntelligence/WPI-DS551-Fall24/blob/main/Project3/materials/Turing_Setup_Instructions_2024_2.pdf)
 * [Google Cloud Platform](https://colab.google/)
 
   
@@ -176,6 +180,20 @@ Please compress all the below files into a zipped file and submit the zip file (
   | 12  | 11/07/2022 | Brown, Galen | 69.01 | Basic DQP with reward shaping |
   | 13  | 11/5/2022  | Ryan Killea | 67.12 | ... |
   | 14  | 11/14/2022  | Rushabh Kheni | 65.51 | Vanilla DQN with Deepmind architecture |  
-  | 15  | 10/30/2022 | Jack Ayvazian | 47.49 | Double DQN, DeepMind Architecture |  
+  | 15  | 10/30/2022 | Jack Ayvazian | 47.49 | Double DQN, DeepMind Architecture | 
+
+## Leaderboard for Fall 2023**
+  | Top | Date | Name | Score | Model |
+  | :---: | :---:| :---: | :---: | :---: |
+  | 1  | 11/7/2023 | Antony Garcia | 426 | DQN |
+  | 2  | 11/15/2023 | Anas AlRifai | 402.72 | DDQN |
+  | 3  | 11/14/2023 | Maanav Iyengar | 384.32 | ... |
+  | 4  | 11/1/2023 | Daniel Moyer | 377.5 | ... |
+  | 5  | 11/19/2023 | Xinyi Fang | 367.27 |  Dueling Double Deep Q-Network |
+  | 6  | 11/15/2023 | Martha Cash | 363.57 | DQN |
+  | 7  | 11/18/2023 | Zhuang Luo | 329.4 | DQN |
+  | 8  | 11/14/2023 | Yiming Liu | 315.81 | DQN |
+  | 9  | 11/14/2023 | Aikeremu Aixilafu | 193.8 | ... |
+  | 10 | 11/15/2023 | Michael O'Connor | 158.68 | ... |
   
-# cs525-breakout
+  
