@@ -33,7 +33,6 @@ class Environment(object):
                 stack 4 last frames, shape: (84, 84, 4)
         '''
         observation, _ = self.env.reset()
-        observation = observation.transpose(2,0,1)
 
         return np.array(observation)
 
@@ -53,7 +52,6 @@ class Environment(object):
             raise ValueError('Ivalid action!!')
 
         observation, reward, done, truncated, info = self.env.step(action)
-        observation = observation.transpose(2,0,1)
 
         return np.array(observation), reward, done, truncated, info
 
@@ -74,9 +72,3 @@ class Environment(object):
         close
         '''
         self.env.close()
-
-    def render(self):
-        '''
-        render
-        '''
-        self.env.render()

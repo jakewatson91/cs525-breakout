@@ -38,8 +38,6 @@ def test(agent, env, total_episodes=100, record_video=False):
                 state, reward, terminated, truncated, info = env.step(action)
                 episode_reward += reward
 
-                env.render()
-                
                 if record_video:
                     vid.capture_frame()
 
