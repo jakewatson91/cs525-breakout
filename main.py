@@ -44,7 +44,8 @@ def run(args, record_video=False):
         env = Environment('BreakoutNoFrameskip-v4', args, atari_wrapper=True, test=True, render_mode=render_mode_value)
         from agent_dqn import Agent_DQN
         agent = Agent_DQN(env, args)
-        test(agent, env, total_episodes=10, record_video=record_video)
+        num_episodes = args.num_episodes if args.num_episodes else 10
+        test(agent, env, total_episodes=num_episodes, record_video=record_video)
     print('running time:',time.time()-start_time)
 
 if __name__ == '__main__':
